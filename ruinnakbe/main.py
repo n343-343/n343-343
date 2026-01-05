@@ -47,14 +47,17 @@ def index():
     """Renders the main page."""
     timestamp = get_current_timestamp()
     files = get_uploaded_files()
-    return render_template('index.html', timestamp=timestamp, version=__version__, files=files)
+    drive_configured = os.path.exists(CLIENT_SECRETS_FILE)
+    return render_template('index.html', timestamp=timestamp, version=__version__, files=files, drive_configured=drive_configured)
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
+        flash("No file part", "danger")
         return redirect(request.url)
     file = request.files['file']
     if file.filename == '':
+        flash("No selected file", "danger")
         return redirect(request.url)
     if file:
         filename = secure_filename(file.filename)
@@ -64,6 +67,19 @@ def upload_file():
             filename = f"{base}_{counter}{extension}"
             counter += 1
         file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        flash(f"File '{filename}' has been uploaded successfully.", "success")
+    return redirect(url_for('index'))
+
+@app.route('/delete/<filename>', methods=['POST'])
+def delete_file(filename):
+    """Deletes a file."""
+    filename = secure_filename(filename)
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    if os.path.exists(file_path):
+        os.remove(file_path)
+        flash(f"File '{filename}' has been deleted.", "success")
+    else:
+        flash(f"File '{filename}' not found.", "danger")
     return redirect(url_for('index'))
 
 @app.route('/command', methods=['POST'])
@@ -76,6 +92,9 @@ def handle_command():
 @app.route('/authorize')
 def authorize():
     """Redirects to the Google authorization page."""
+    if not os.path.exists(CLIENT_SECRETS_FILE):
+        flash("Google Drive is not configured. Please add your client_secret.json file.")
+        return redirect(url_for('index'))
     flow = google_auth_oauthlib.flow.Flow.from_client_secrets_file(
         CLIENT_SECRETS_FILE, scopes=SCOPES)
     flow.redirect_uri = url_for('oauth2callback', _external=True)
